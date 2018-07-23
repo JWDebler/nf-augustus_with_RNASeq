@@ -4,16 +4,16 @@
 //Name of reference organism to get RNASeq datasets for
 params.reference = 'Botrytis cinerea'
 params.refID = 'B.cinerea'
-params.workdir = "/home/johannes/rdrive/PPG_SEQ_DATA-LICHTJ-SE00182/johannes/notebook/2018-05-14-Botrytis"
-//proteins of the reference genome
+params.workdir = "/home/johannes/rdrive/PPG_SEQ_DATA-LICHTJ-SE00182/johannes/notebook/2018-05-14-Botrytis_github"
+//put proteins of the reference genome here
 params.refpep = "${params.workdir}/reference/GCF_000143535.2_ASM14353v4_protein.faa.gz"
-//input file for augustus
+//config file for augustus
 params.config = "${params.workdir}/configs/extrinsic.cfg"
 //put all the scripts from the 'scripts' directory of the repository there
 params.scripts = "${params.workdir}/scripts"
 params.outdir = "${params.workdir}/output"
 //soft masked input files for genomes we want annotated
-params.input = "${params.workdir}/input/*soft.fasta"
+params.input = "${params.workdir}/output/*/*soft.fasta"
 //+++++++++++++++++++++++++++++++++++++++++++++++
 
 log.info "====================================================================="
@@ -37,11 +37,12 @@ Channel
 .tap{ maskedAssembliesForExonerate }
 
 process getRNASeqIDs {
+    tag {params.reference}
 
     output:
     file 'ids.txt' into RNASeqIDs
     """
-esearch -db taxonomy -query '${params.ref}' \
+esearch -db taxonomy -query '${params.reference}' \
 | elink -target sra \
 | efetch -format docusm \
 | xtract -pattern EXPERIMENT_PACKAGE \
@@ -58,7 +59,7 @@ RNASeqIDs
 .set{RNASeqIDsTrimmed}
 
 process dumpfastq {
-  publishDir "${params.outdir}/fastq-dumps", mode: 'copy'
+  publishDir "${params.outdir}/${params.refID}_fastq-dumps", mode: 'copy'
   tag { id }
 
   input:
@@ -72,14 +73,26 @@ process dumpfastq {
   """
 }
 
-process DecompressProtein {
+process DecompressProtein1 {
   tag  { id }
 
   input:
-  set id, "proteins.fasta.gz" from compressedProteins, compressedProteinsForOrtho
+  set id, "proteins.fasta.gz" from compressedProteins
 
   output:
-  file "proteins.fasta" into proteinsBasic
+  set id, "proteins.fasta" into proteinsBasic
+
+  "zcat proteins.fasta.gz > proteins.fasta"
+}
+
+process DecompressProtein2 {
+  tag  { id }
+
+  input:
+  set id, "proteins.fasta.gz" from compressedProteinsForOrtho
+
+  output:
+  set id, "proteins.fasta" into proteinsBasicForOrtho
 
   "zcat proteins.fasta.gz > proteins.fasta"
 }
@@ -112,7 +125,7 @@ process exonerate {
   tag { id }
 
   input:
-  set id, 'genome.fasta', 'index.esi', 'index.esd', 'altprop.fasta' from exonerateInputs
+  set id, 'genome.fasta', 'index.esi', 'index.esd', refID, 'altprop.fasta' from exonerateInputs
 
   output:
   set id, 'exn_out' into exonerate_out
