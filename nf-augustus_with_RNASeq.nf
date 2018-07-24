@@ -151,7 +151,6 @@ exonerate_out
 .collectFile() { id, path -> ["${id}.hints", path.text] }
 .map { path -> [path.getBaseName(), path] }
 .set { exonerate_hint_input }
-
 process exonerateOutputToHints {
   tag { id }
   publishDir "${params.outdir}/$id/hints/exonerateHints", mode: 'copy'
@@ -304,7 +303,7 @@ process extractFasta {
   set id, "${id}.proteins.fasta" into augustusFastas
 
   """
-  getAnnoFasta.pl --seqfile input.fasta ${id}.gff
+  /opt/augustus/current/scripts/getAnnoFasta.pl --seqfile input.fasta ${id}.gff
   mv ${id}.aa ${id}.proteins.fasta
   mv ${id}.codingseq ${id}.cds.fasta
   """
@@ -413,7 +412,7 @@ process interproscan {
   """
 
 }
-
+return
 process orthoFinder {
   publishDir "${params.outdir}/orthoFinder", mode: 'copy'
   cpus 10
