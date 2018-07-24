@@ -6,7 +6,7 @@ params.reference = 'Botrytis cinerea'
 params.refID = 'B.cinerea'
 params.workdir = "/home/johannes/rdrive/PPG_SEQ_DATA-LICHTJ-SE00182/johannes/notebook/2018-05-14-Botrytis_github"
 //put proteins of the reference genome here
-params.refpep = "${params.workdir}/reference/GCF_000143535.2_ASM14353v4_protein.faa.gz"
+params.refpep = "${params.workdir}/reference/*.faa.gz"
 //config file for augustus
 params.config = "${params.workdir}/configs/extrinsic.cfg"
 //put all the scripts from the 'scripts' directory of the repository there
@@ -412,7 +412,9 @@ process interproscan {
   """
 
 }
+
 return
+
 process orthoFinder {
   publishDir "${params.outdir}/orthoFinder", mode: 'copy'
   cpus 10
