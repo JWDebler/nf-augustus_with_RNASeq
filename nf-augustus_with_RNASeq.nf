@@ -38,9 +38,10 @@ Channel
 
 process getRNASeqIDs {
     tag {params.reference}
+    publishDir "${params.outdir}/", mode: 'copy'
 
     output:
-    file 'ids.txt' into RNASeqIDs
+    file 'RNAseq_ids.txt' into RNASeqIDs
     """
 esearch -db taxonomy -query '${params.reference}' \
 | elink -target sra \
@@ -49,7 +50,7 @@ esearch -db taxonomy -query '${params.reference}' \
   -if LIBRARY_STRATEGY \
   -equals 'RNA-Seq' \
   -group RUN \
-  -element @accession > ids.txt
+  -element @accession > RNAseq_ids.txt
     """
 }
 
@@ -151,6 +152,7 @@ exonerate_out
 .collectFile() { id, path -> ["${id}.hints", path.text] }
 .map { path -> [path.getBaseName(), path] }
 .set { exonerate_hint_input }
+
 process exonerateOutputToHints {
   tag { id }
   publishDir "${params.outdir}/$id/hints/exonerateHints", mode: 'copy'
@@ -160,7 +162,7 @@ process exonerateOutputToHints {
   output:
   set id, "out.hints" into exonerate_hints
 
-  "exonerateGffToHints.awk < exonerate.gff > out.hints"
+  "${params.scripts}/exonerateGffToHints.awk < exonerate.gff > out.hints"
 }
 
 process indexAssemblyHisat2 {
@@ -190,7 +192,7 @@ process alignToAssemblyhisat2 {
   """
   /opt/hisat2/current/hisat2 -x ${idAssembly} \
   -U ${idFastq}.fastq \
-  --threads 3 \
+  --threads 10 \
   --max-intronlen 2000 \
   | samtools view -b \
   | samtools sort \
@@ -229,7 +231,7 @@ process bamToHints {
   set idAssembly, "${idAssembly}.${idFastq}.gff" into bamToHints
 
   """
-  bam2hints --intronsonly --maxgaplen=10 --minintronlen=15 --maxintronlen=500 --in=assembly.bam --out=${idAssembly}.${idFastq}.gff
+  /opt/augustus/current/bin/bam2hints --intronsonly --maxgaplen=10 --minintronlen=15 --maxintronlen=500 --in=assembly.bam --out=${idAssembly}.${idFastq}.gff
   """
 }
 
@@ -269,10 +271,10 @@ process augustusGTF {
 
 
   output:
-  set id, "${id}.gff", "input.fasta" into augustusGTFoutput
+  set id, "${id}.augustus.gff", "input.fasta" into augustusGTFoutput
 
   """
-augustus \
+/opt/augustus/current/bin/augustus \
  --progress=true \
  --gff3=off\
  --softmasking=1 \
@@ -282,7 +284,7 @@ augustus \
  --/augustus/verbosity=4 \
  --species=botrytis_cinerea \
  --extrinsicCfgFile=${extrinsic_config} \
- input.fasta > ${id}.gff
+ input.fasta > ${id}.augustus.gff
   """
 }
 
@@ -293,7 +295,6 @@ augustusGTFoutput
 
 process extractFasta {
   publishDir "${params.outdir}/$id/augustus", mode: 'copy'
-  container "robsyme/augustus"
   tag { id }
 
   input:
@@ -363,16 +364,19 @@ process effectorP {
   file "${id}.effectorP.tsv"
 
   """
-  /opt/effectorP/EffectorP_2.0/Scripts/EffectorP.py \
+  /opt/effectorP/current/Scripts/EffectorP.py \
   -s \
   -o ${id}.effectorP.tsv \
   -i input.fasta
   """
 }
 
+// deepsig run out of the docker container seems to have a problem using the symbolic link 'input.fasta' and crashes
+// therefore I first copy it and then use the copy as input.
 process deepsig {
   tag { id }
   publishDir "${params.outdir}/$id/deepsig", mode: 'copy'
+  container "bolognabiocomp/deepsig"
 
   input:
   set id, "input.fasta" from labledProteinsForDeepsig
@@ -381,7 +385,8 @@ process deepsig {
   file "${id}.deepsig.out"
 
   """
-  runDeepSig.sh input.fasta euk ${id}.deepsig.out 8
+  cp input.fasta in.fasta
+  docker run -v \$(pwd):/data/ bolognabiocomp/deepsig -f in.fasta -k euk -o ${id}.deepsig.out
   """
 
 }
@@ -398,7 +403,7 @@ process interproscan {
   file "${id}.interproscan.tsv"
 
   """
-  interproscan.sh \
+  /opt/interproscan/current/interproscan.sh \
   --applications SignalP_EUK,Pfam,TMHMM,PANTHER,PRINTS,ProDom,ProSitePatterns,ProSiteProfiles,MobiDBLite\
   --cpu ${task.cpus} \
   --seqtype p \
@@ -426,7 +431,7 @@ process orthoFinder {
   file "Results_*" into orthoFinderResults
 
   """
-  /opt/orthofinder/current/orthofinder  \
+  /opt/orthofinder/current/orthofinder   \
   -f input \
   -t ${task.cpus} \
   -S diamond \
